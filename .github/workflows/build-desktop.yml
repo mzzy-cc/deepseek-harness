@@ -1,11 +1,11 @@
-name: Build Desktop v0.2.0-rc.2 (PowerShell Cert Bypass)
+name: Build Desktop v0.2.0-rc.2 (Unsigned)
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    name: Build Windows Client
+    name: Build Windows Client (Unsigned)
     runs-on: windows-latest
 
     steps:
@@ -40,37 +40,14 @@ jobs:
       - name: Build Repository
         run: pnpm run build
 
-      # 【终极方案】：使用 PowerShell 生成标准代码签名证书，并用 Bash 注入环境变量
-      - name: Generate Valid Code Signing Cert & Inject Env
-        run: |
-          # 1. 使用 PowerShell 生成并导出证书
-          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=FakeCodeSignCert" -CertStoreLocation "Cert:\CurrentUser\My" -KeyExportPolicy Exportable
-          $pwd = ConvertTo-SecureString -String "FakePassword123" -Force -AsPlainText
-          Export-PfxCertificate -Cert $cert -FilePath "fake-cert.pfx" -Password $pwd
-          Export-Certificate -Cert $cert -FilePath "fake-cert.cer" -Type CERT
-          
-          # 获取绝对路径并写入环境变量文件
-          $cerPath = (Resolve-Path "fake-cert.cer").Path
-          $envFile = "apps/desktop/.env.windows"
-          Copy-Item "apps/desktop/.env.windows.example" $envFile
-          
-          # 2. 使用 PowerShell 替换环境变量（比 sed 在 Windows 上稳定 100 倍）
-          (Get-Content $envFile) -replace '^DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=.*', "DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com" | Set-Content $envFile
-          (Get-Content $envFile) -replace '^DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=.*', "DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com" | Set-Content $envFile
-          (Get-Content $envFile) -replace '^DOWNLOAD_TEST_ORIGIN=.*', "DOWNLOAD_TEST_ORIGIN=https://deepseek.com" | Set-Content $envFile
-          (Get-Content $envFile) -replace '^DOWNLOAD_TEST_RELEASE_ID=.*', "DOWNLOAD_TEST_RELEASE_ID=00000000000000000000000000000000" | Set-Content $envFile
-          (Get-Content $envFile) -replace '^DSH_DESKTOP_WINDOWS_CER_FILE=.*', "DSH_DESKTOP_WINDOWS_CER_FILE=$cerPath" | Set-Content $envFile
-          
-          Write-Host "✅ Valid cert generated at: $cerPath"
-        shell: pwsh
-
-      - name: Package Desktop App
-        run: pnpm run package:desktop
+      - name: Package Desktop App (Unsigned)
+        run: pnpm run package:desktop:win:x64:unsigned
+        env:
+          DSH_DESKTOP_APP_ID: com.example.deepseek-harness
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dsh-desktop-windows-v0.2.0-rc.2
-          path: |
-            apps/desktop/dist/*.exe
+          name: dsh-desktop-windows-unsigned-v0.2.0-rc.2
+          path: apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe
           if-no-files-found: warn
