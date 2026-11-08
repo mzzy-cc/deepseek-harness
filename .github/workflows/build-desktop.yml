@@ -1,7 +1,7 @@
 name: Build Desktop v0.2.0-rc.2 (Auto Sync Tags)
 
 on:
-  workflow_dispatch: # 允许在 GitHub 网页端手动触发
+  workflow_dispatch:
 
 jobs:
   build:
@@ -9,62 +9,91 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-latest, macos-latest] # 同时在 Win 和 Mac 虚拟机上打包
+        os: [windows-latest, macos-latest]
 
     steps:
-      # 1. 拉取你 Fork 仓库的当前代码
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 2. 自动从官方原仓库拉取所有 Tags（无需推送回 Fork）
       - name: Sync Tags from Upstream
         run: |
           git remote remove upstream || true
           git remote add upstream https://github.com/deepseek-ai/deepseek-harness.git
           git fetch upstream --tags
 
-      # 3. 切换到指定的旧版本代码
       - name: Checkout Specific Tag
         run: |
-          git checkout dsh-v0.2.0-rc.2 || git checkout v0.2.0-rc.2 || (echo "❌ Error: Tag not found!" && exit 1)
+          git checkout dsh-v0.2.0-rc.2 || git checkout v0.2.0-rc.2 || (echo "Error: Tag not found!" && exit 1)
 
-      # 4. 配置 Node.js 环境
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      # 5. 配置 pnpm 包管理器
       - name: Setup pnpm
         uses: pnpm/action-setup@v2
         with:
           version: 11
 
-      # 6. 安装项目依赖
       - name: Install Dependencies
         run: pnpm install
 
-      # 7. 构建仓库基础产物
       - name: Build Repository
         run: pnpm run build
 
-      # 8. 【关键修复】自动创建打包所需的环境变量配置文件
+      # 根据 .env.windows.example 模板内容分析，需要设置以下变量：
+      # 1. DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN - 必填，需HTTPS开头（上一轮报错的直接原因）
+      # 2. DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN - 模板中也为空，可能也会被校验拦截
+      # 3. DOWNLOAD_TEST_RELEASE_ID - 注释标注"Required for test releases"，需32位小写十六进制
       - name: Prepare Desktop Environment File
         run: |
-          # 如果是 Windows 环境，复制 .env.windows.example
           if [ "$RUNNER_OS" == "Windows" ]; then
             cp apps/desktop/.env.windows.example apps/desktop/.env.windows
-          # 如果是 macOS 环境，复制 .env.macos.example
+            
+            # 安全替换：先grep检查变量是否存在，存在则sed替换，不存在则echo追加
+            if grep -q "^DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=" apps/desktop/.env.windows; then
+              sed -i 's|^DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com|' apps/desktop/.env.windows
+            else
+              echo "DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com" >> apps/desktop/.env.windows
+            fi
+            
+            if grep -q "^DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=" apps/desktop/.env.windows; then
+              sed -i 's|^DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com|' apps/desktop/.env.windows
+            else
+              echo "DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com" >> apps/desktop/.env.windows
+            fi
+            
+            if grep -q "^DOWNLOAD_TEST_RELEASE_ID=" apps/desktop/.env.windows; then
+              sed -i 's|^DOWNLOAD_TEST_RELEASE_ID=.*|DOWNLOAD_TEST_RELEASE_ID=00000000000000000000000000000000|' apps/desktop/.env.windows
+            else
+              echo "DOWNLOAD_TEST_RELEASE_ID=00000000000000000000000000000000" >> apps/desktop/.env.windows
+            fi
           elif [ "$RUNNER_OS" == "macOS" ]; then
             cp apps/desktop/.env.macos.example apps/desktop/.env.macos
+            
+            if grep -q "^DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=" apps/desktop/.env.macos; then
+              sed -i '' 's|^DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com|' apps/desktop/.env.macos
+            else
+              echo "DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com" >> apps/desktop/.env.macos
+            fi
+            
+            if grep -q "^DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=" apps/desktop/.env.macos; then
+              sed -i '' 's|^DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com|' apps/desktop/.env.macos
+            else
+              echo "DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com" >> apps/desktop/.env.macos
+            fi
+            
+            if grep -q "^DOWNLOAD_TEST_RELEASE_ID=" apps/desktop/.env.macos; then
+              sed -i '' 's|^DOWNLOAD_TEST_RELEASE_ID=.*|DOWNLOAD_TEST_RELEASE_ID=00000000000000000000000000000000|' apps/desktop/.env.macos
+            else
+              echo "DOWNLOAD_TEST_RELEASE_ID=00000000000000000000000000000000" >> apps/desktop/.env.macos
+            fi
           fi
         shell: bash
 
-      # 9. 执行桌面端打包命令
       - name: Package Desktop App
         run: pnpm run package:desktop
 
-      # 10. 上传打包产物
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
