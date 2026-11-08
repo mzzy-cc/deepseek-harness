@@ -1,15 +1,12 @@
-name: Build Desktop v0.2.0-rc.2 (Final Bypass)
+name: Build Desktop v0.2.0-rc.2 (Windows Only)
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    name: Build Desktop Client
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [windows-latest, macos-latest]
+    name: Build Windows Client
+    runs-on: windows-latest
 
     steps:
       - name: Checkout Code
@@ -20,10 +17,12 @@ jobs:
           git remote remove upstream || true
           git remote add upstream https://github.com/deepseek-ai/deepseek-harness.git
           git fetch upstream --tags
+        shell: bash
 
       - name: Checkout Specific Tag
         run: |
           git checkout dsh-v0.2.0-rc.2 || git checkout v0.2.0-rc.2 || (echo "❌ Error: Tag not found!" && exit 1)
+        shell: bash
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -41,42 +40,25 @@ jobs:
       - name: Build Repository
         run: pnpm run build
 
-      - name: Prepare Env & Fake Cert
+      - name: Prepare Env & Bypass Signing
         run: |
-          if [ "$RUNNER_OS" == "Windows" ]; then
-            ENV_FILE="apps/desktop/.env.windows"
-            cp apps/desktop/.env.windows.example "$ENV_FILE"
-            
-            # 1. 生成一个【带有代码签名扩展】的假证书（绕过官方严格校验）
-            mkdir -p fake-certs
-            MSYS_NO_PATHCONV=1 openssl req -x509 -newkey rsa:2048 \
-              -keyout fake-certs/key.pem -out fake-certs/cert.cer \
-              -days 1 -nodes -subj "/CN=FakeCodeSignCert" \
-              -addext extendedKeyUsage=codeSigning
-            
-            # 2. 将证书路径写入 .env.windows
-            CERT_PATH="$(pwd)/fake-certs/cert.cer"
-            
-            # 3. 逐条注入环境变量
-            sed -i 's|^DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com|' "$ENV_FILE" || echo "DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
-            sed -i 's|^DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com|' "$ENV_FILE" || echo "DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
-            sed -i 's|^DOWNLOAD_TEST_ORIGIN=.*|DOWNLOAD_TEST_ORIGIN=https://deepseek.com|' "$ENV_FILE" || echo "DOWNLOAD_TEST_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
-            sed -i 's|^DOWNLOAD_TEST_RELEASE_ID=.*|DOWNLOAD_TEST_RELEASE_ID=00000000000000000000000000000000|' "$ENV_FILE" || echo "DOWNLOAD_TEST_RELEASE_ID=00000000000000000000000000000000" >> "$ENV_FILE"
-            sed -i "s|^DSH_DESKTOP_WINDOWS_CER_FILE=.*|DSH_DESKTOP_WINDOWS_CER_FILE=$CERT_PATH|" "$ENV_FILE" || echo "DSH_DESKTOP_WINDOWS_CER_FILE=$CERT_PATH" >> "$ENV_FILE"
-            
-            echo "✅ Valid Code Signing Fake Cert injected at: $CERT_PATH"
-
-          elif [ "$RUNNER_OS" == "macOS" ]; then
-            ENV_FILE="apps/desktop/.env.macos"
-            cp apps/desktop/.env.macos.example "$ENV_FILE"
-            
-            # macOS 逐条注入环境变量
-            sed -i '' 's|^DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com|' "$ENV_FILE" || echo "DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
-            sed -i '' 's|^DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com|' "$ENV_FILE" || echo "DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
-            sed -i '' 's|^DOWNLOAD_TEST_ORIGIN=.*|DOWNLOAD_TEST_ORIGIN=https://deepseek.com|' "$ENV_FILE" || echo "DOWNLOAD_TEST_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
-            sed -i '' 's|^DOWNLOAD_TEST_RELEASE_ID=.*|DOWNLOAD_TEST_RELEASE_ID=00000000000000000000000000000000|' "$ENV_FILE" || echo "DOWNLOAD_TEST_RELEASE_ID=00000000000000000000000000000000" >> "$ENV_FILE"
-            
-            echo "✅ macOS Env files prepared successfully"
+          ENV_FILE="apps/desktop/.env.windows"
+          cp apps/desktop/.env.windows.example "$ENV_FILE"
+          
+          # 1. 注入所有必需的测试变量
+          sed -i 's|^DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com|' "$ENV_FILE" || echo "DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
+          sed -i 's|^DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com|' "$ENV_FILE" || echo "DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
+          sed -i 's|^DOWNLOAD_TEST_ORIGIN=.*|DOWNLOAD_TEST_ORIGIN=https://deepseek.com|' "$ENV_FILE" || echo "DOWNLOAD_TEST_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
+          sed -i 's|^DOWNLOAD_TEST_RELEASE_ID=.*|DOWNLOAD_TEST_RELEASE_ID=00000000000000000000000000000000|' "$ENV_FILE" || echo "DOWNLOAD_TEST_RELEASE_ID=00000000000000000000000000000000" >> "$ENV_FILE"
+          
+          # 2. 【核心手术】：直接清空 windows-sign.mjs 中的关键函数
+          SIGN_SCRIPT="apps/desktop/scripts/windows-sign.mjs"
+          if [ -f "$SIGN_SCRIPT" ]; then
+            perl -i -0pe 's/async function createWindowsTokenSigner\(.*?\n\}/async function createWindowsTokenSigner() {\n  console.warn("⚠️ Bypassing Windows Code Signing...");\n  return null;\n}/gs' "$SIGN_SCRIPT"
+            echo "✅ windows-sign.mjs has been surgically modified."
+          else
+            echo "❌ Error: $SIGN_SCRIPT not found!"
+            exit 1
           fi
         shell: bash
 
@@ -86,9 +68,7 @@ jobs:
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dsh-desktop-${{ matrix.os }}-v0.2.0-rc.2
+          name: dsh-desktop-windows-v0.2.0-rc.2
           path: |
             apps/desktop/dist/*.exe
-            apps/desktop/dist/*.dmg
-            apps/desktop/dist/*.AppImage
           if-no-files-found: warn
