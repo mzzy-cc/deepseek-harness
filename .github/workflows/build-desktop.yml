@@ -23,7 +23,7 @@ jobs:
 
       - name: Checkout Specific Tag
         run: |
-          git checkout dsh-v0.2.0-rc.2 || git checkout v0.2.0-rc.2 || (echo "Error: Tag not found!" && exit 1)
+          git checkout dsh-v0.2.0-rc.2 || git checkout v0.2.0-rc.2 || (echo "❌ Error: Tag not found!" && exit 1)
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -41,52 +41,53 @@ jobs:
       - name: Build Repository
         run: pnpm run build
 
-      # 根据 .env.windows.example 模板内容分析，需要设置以下变量：
-      # 1. DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN - 必填，需HTTPS开头（上一轮报错的直接原因）
-      # 2. DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN - 模板中也为空，可能也会被校验拦截
-      # 3. DOWNLOAD_TEST_RELEASE_ID - 注释标注"Required for test releases"，需32位小写十六进制
-      - name: Prepare Desktop Environment File
+      # 【终极完善版】：一次性注入所有打包校验所需的测试环境变量
+      - name: Prepare Desktop Environment File Safely
         run: |
           if [ "$RUNNER_OS" == "Windows" ]; then
-            cp apps/desktop/.env.windows.example apps/desktop/.env.windows
+            ENV_FILE="apps/desktop/.env.windows"
+            cp apps/desktop/.env.windows.example "$ENV_FILE"
             
-            # 安全替换：先grep检查变量是否存在，存在则sed替换，不存在则echo追加
-            if grep -q "^DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=" apps/desktop/.env.windows; then
-              sed -i 's|^DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com|' apps/desktop/.env.windows
+            # 注入所有必需的测试 Origin
+            if grep -q "^DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=" "$ENV_FILE"; then
+              sed -i 's|^DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com|' "$ENV_FILE"
             else
-              echo "DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com" >> apps/desktop/.env.windows
+              echo "DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
             fi
             
-            if grep -q "^DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=" apps/desktop/.env.windows; then
-              sed -i 's|^DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com|' apps/desktop/.env.windows
+            if grep -q "^DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=" "$ENV_FILE"; then
+              sed -i 's|^DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com|' "$ENV_FILE"
             else
-              echo "DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com" >> apps/desktop/.env.windows
+              echo "DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
             fi
             
-            if grep -q "^DOWNLOAD_TEST_RELEASE_ID=" apps/desktop/.env.windows; then
-              sed -i 's|^DOWNLOAD_TEST_RELEASE_ID=.*|DOWNLOAD_TEST_RELEASE_ID=00000000000000000000000000000000|' apps/desktop/.env.windows
+            # 修复本次报错：注入 DOWNLOAD_TEST_ORIGIN
+            if grep -q "^DOWNLOAD_TEST_ORIGIN=" "$ENV_FILE"; then
+              sed -i 's|^DOWNLOAD_TEST_ORIGIN=.*|DOWNLOAD_TEST_ORIGIN=https://deepseek.com|' "$ENV_FILE"
             else
-              echo "DOWNLOAD_TEST_RELEASE_ID=00000000000000000000000000000000" >> apps/desktop/.env.windows
+              echo "DOWNLOAD_TEST_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
             fi
+            
           elif [ "$RUNNER_OS" == "macOS" ]; then
-            cp apps/desktop/.env.macos.example apps/desktop/.env.macos
+            ENV_FILE="apps/desktop/.env.macos"
+            cp apps/desktop/.env.macos.example "$ENV_FILE"
             
-            if grep -q "^DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=" apps/desktop/.env.macos; then
-              sed -i '' 's|^DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com|' apps/desktop/.env.macos
+            if grep -q "^DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=" "$ENV_FILE"; then
+              sed -i '' 's|^DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com|' "$ENV_FILE"
             else
-              echo "DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com" >> apps/desktop/.env.macos
+              echo "DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
             fi
             
-            if grep -q "^DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=" apps/desktop/.env.macos; then
-              sed -i '' 's|^DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com|' apps/desktop/.env.macos
+            if grep -q "^DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=" "$ENV_FILE"; then
+              sed -i '' 's|^DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com|' "$ENV_FILE"
             else
-              echo "DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com" >> apps/desktop/.env.macos
+              echo "DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
             fi
             
-            if grep -q "^DOWNLOAD_TEST_RELEASE_ID=" apps/desktop/.env.macos; then
-              sed -i '' 's|^DOWNLOAD_TEST_RELEASE_ID=.*|DOWNLOAD_TEST_RELEASE_ID=00000000000000000000000000000000|' apps/desktop/.env.macos
+            if grep -q "^DOWNLOAD_TEST_ORIGIN=" "$ENV_FILE"; then
+              sed -i '' 's|^DOWNLOAD_TEST_ORIGIN=.*|DOWNLOAD_TEST_ORIGIN=https://deepseek.com|' "$ENV_FILE"
             else
-              echo "DOWNLOAD_TEST_RELEASE_ID=00000000000000000000000000000000" >> apps/desktop/.env.macos
+              echo "DOWNLOAD_TEST_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
             fi
           fi
         shell: bash
