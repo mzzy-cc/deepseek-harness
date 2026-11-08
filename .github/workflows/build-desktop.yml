@@ -1,4 +1,4 @@
-name: Build Desktop v0.2.0-rc.2 (Final Fix - No Bash 4+)
+name: Build Desktop v0.2.0-rc.2 (Fake Cert Bypass)
 
 on:
   workflow_dispatch:
@@ -41,7 +41,6 @@ jobs:
       - name: Build Repository
         run: pnpm run build
 
-      # 【终极修复】：完全兼容 macOS bash 3.2（不使用关联数组等 bash 4+ 特性）
       - name: Prepare Env & Fake Cert
         run: |
           if [ "$RUNNER_OS" == "Windows" ]; then
@@ -49,18 +48,19 @@ jobs:
             cp apps/desktop/.env.windows.example "$ENV_FILE"
             
             # 1. 生成一个假的自签名证书文件（绕过文件存在性校验）
+            # MSYS_NO_PATHCONV=1 防止 Git Bash 把 /CN=FakeCert 转成 Windows 路径
             mkdir -p fake-certs
-            openssl req -x509 -newkey rsa:2048 -keyout fake-certs/key.pem -out fake-certs/cert.cer -days 1 -nodes -subj "/CN=FakeCert"
+            MSYS_NO_PATHCONV=1 openssl req -x509 -newkey rsa:2048 -keyout fake-certs/key.pem -out fake-certs/cert.cer -days 1 -nodes -subj "/CN=FakeCert"
             
             # 2. 将证书路径写入 .env.windows
             CERT_PATH="$(pwd)/fake-certs/cert.cer"
             
-            # 3. 逐条注入环境变量（使用 sed 替换或 echo 追加，兼容 GNU sed 和 BSD sed）
-            sed -i 's|^DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com|' "$ENV_FILE" || echo "DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
-            sed -i 's|^DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com|' "$ENV_FILE" || echo "DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
-            sed -i 's|^DOWNLOAD_TEST_ORIGIN=.*|DOWNLOAD_TEST_ORIGIN=https://deepseek.com|' "$ENV_FILE" || echo "DOWNLOAD_TEST_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
-            sed -i 's|^DOWNLOAD_TEST_RELEASE_ID=.*|DOWNLOAD_TEST_RELEASE_ID=00000000000000000000000000000000|' "$ENV_FILE" || echo "DOWNLOAD_TEST_RELEASE_ID=00000000000000000000000000000000" >> "$ENV_FILE"
-            sed -i "s|^DSH_DESKTOP_WINDOWS_CER_FILE=.*|DSH_DESKTOP_WINDOWS_CER_FILE=$CERT_PATH|" "$ENV_FILE" || echo "DSH_DESKTOP_WINDOWS_CER_FILE=$CERT_PATH" >> "$ENV_FILE"
+            # 3. 逐条注入环境变量（GNU sed 在 Windows Git Bash 上不需要 '' 参数）
+            sed -i 's|^DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com|' "$ENV_FILE"
+            sed -i 's|^DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com|' "$ENV_FILE"
+            sed -i 's|^DOWNLOAD_TEST_ORIGIN=.*|DOWNLOAD_TEST_ORIGIN=https://deepseek.com|' "$ENV_FILE"
+            sed -i 's|^DOWNLOAD_TEST_RELEASE_ID=.*|DOWNLOAD_TEST_RELEASE_ID=00000000000000000000000000000000|' "$ENV_FILE"
+            sed -i "s|^DSH_DESKTOP_WINDOWS_CER_FILE=.*|DSH_DESKTOP_WINDOWS_CER_FILE=${CERT_PATH}|" "$ENV_FILE"
             
             echo "Fake cert injected at: $CERT_PATH"
             cat "$ENV_FILE"
@@ -70,10 +70,10 @@ jobs:
             cp apps/desktop/.env.macos.example "$ENV_FILE"
             
             # macOS BSD sed 需要 sed -i ''（空字符串作为备份扩展名）
-            sed -i '' 's|^DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com|' "$ENV_FILE" || echo "DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
-            sed -i '' 's|^DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com|' "$ENV_FILE" || echo "DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
-            sed -i '' 's|^DOWNLOAD_TEST_ORIGIN=.*|DOWNLOAD_TEST_ORIGIN=https://deepseek.com|' "$ENV_FILE" || echo "DOWNLOAD_TEST_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
-            sed -i '' 's|^DOWNLOAD_TEST_RELEASE_ID=.*|DOWNLOAD_TEST_RELEASE_ID=00000000000000000000000000000000|' "$ENV_FILE" || echo "DOWNLOAD_TEST_RELEASE_ID=00000000000000000000000000000000" >> "$ENV_FILE"
+            sed -i '' 's|^DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com|' "$ENV_FILE"
+            sed -i '' 's|^DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com|' "$ENV_FILE"
+            sed -i '' 's|^DOWNLOAD_TEST_ORIGIN=.*|DOWNLOAD_TEST_ORIGIN=https://deepseek.com|' "$ENV_FILE"
+            sed -i '' 's|^DOWNLOAD_TEST_RELEASE_ID=.*|DOWNLOAD_TEST_RELEASE_ID=00000000000000000000000000000000|' "$ENV_FILE"
             
             echo "Env files prepared for macOS"
             cat "$ENV_FILE"
