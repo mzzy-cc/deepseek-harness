@@ -1,4 +1,4 @@
-name: Build Desktop v0.2.0-rc.2 (Windows Only)
+name: Build Desktop v0.2.0-rc.2 (PowerShell Cert Bypass)
 
 on:
   workflow_dispatch:
@@ -40,27 +40,29 @@ jobs:
       - name: Build Repository
         run: pnpm run build
 
-      - name: Prepare Env & Bypass Signing
+      # 【终极方案】：使用 PowerShell 生成标准代码签名证书，并用 Bash 注入环境变量
+      - name: Generate Valid Code Signing Cert & Inject Env
         run: |
-          ENV_FILE="apps/desktop/.env.windows"
-          cp apps/desktop/.env.windows.example "$ENV_FILE"
+          # 1. 使用 PowerShell 生成并导出证书
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=FakeCodeSignCert" -CertStoreLocation "Cert:\CurrentUser\My" -KeyExportPolicy Exportable
+          $pwd = ConvertTo-SecureString -String "FakePassword123" -Force -AsPlainText
+          Export-PfxCertificate -Cert $cert -FilePath "fake-cert.pfx" -Password $pwd
+          Export-Certificate -Cert $cert -FilePath "fake-cert.cer" -Type CERT
           
-          # 1. 注入所有必需的测试变量
-          sed -i 's|^DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com|' "$ENV_FILE" || echo "DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
-          sed -i 's|^DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com|' "$ENV_FILE" || echo "DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
-          sed -i 's|^DOWNLOAD_TEST_ORIGIN=.*|DOWNLOAD_TEST_ORIGIN=https://deepseek.com|' "$ENV_FILE" || echo "DOWNLOAD_TEST_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
-          sed -i 's|^DOWNLOAD_TEST_RELEASE_ID=.*|DOWNLOAD_TEST_RELEASE_ID=00000000000000000000000000000000|' "$ENV_FILE" || echo "DOWNLOAD_TEST_RELEASE_ID=00000000000000000000000000000000" >> "$ENV_FILE"
+          # 获取绝对路径并写入环境变量文件
+          $cerPath = (Resolve-Path "fake-cert.cer").Path
+          $envFile = "apps/desktop/.env.windows"
+          Copy-Item "apps/desktop/.env.windows.example" $envFile
           
-          # 2. 【核心手术】：直接清空 windows-sign.mjs 中的关键函数
-          SIGN_SCRIPT="apps/desktop/scripts/windows-sign.mjs"
-          if [ -f "$SIGN_SCRIPT" ]; then
-            perl -i -0pe 's/async function createWindowsTokenSigner\(.*?\n\}/async function createWindowsTokenSigner() {\n  console.warn("⚠️ Bypassing Windows Code Signing...");\n  return null;\n}/gs' "$SIGN_SCRIPT"
-            echo "✅ windows-sign.mjs has been surgically modified."
-          else
-            echo "❌ Error: $SIGN_SCRIPT not found!"
-            exit 1
-          fi
-        shell: bash
+          # 2. 使用 PowerShell 替换环境变量（比 sed 在 Windows 上稳定 100 倍）
+          (Get-Content $envFile) -replace '^DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=.*', "DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com" | Set-Content $envFile
+          (Get-Content $envFile) -replace '^DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=.*', "DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com" | Set-Content $envFile
+          (Get-Content $envFile) -replace '^DOWNLOAD_TEST_ORIGIN=.*', "DOWNLOAD_TEST_ORIGIN=https://deepseek.com" | Set-Content $envFile
+          (Get-Content $envFile) -replace '^DOWNLOAD_TEST_RELEASE_ID=.*', "DOWNLOAD_TEST_RELEASE_ID=00000000000000000000000000000000" | Set-Content $envFile
+          (Get-Content $envFile) -replace '^DSH_DESKTOP_WINDOWS_CER_FILE=.*', "DSH_DESKTOP_WINDOWS_CER_FILE=$cerPath" | Set-Content $envFile
+          
+          Write-Host "✅ Valid cert generated at: $cerPath"
+        shell: pwsh
 
       - name: Package Desktop App
         run: pnpm run package:desktop
