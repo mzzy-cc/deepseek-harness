@@ -16,18 +16,17 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 2. 自动从官方原仓库拉取所有 Tags 并推送到你的 Fork
+      # 2. 强制重置上游远程地址并拉取 Tags（仅拉取到本地，不推送）
       - name: Sync Tags from Upstream
         run: |
-          git remote add upstream https://github.com/deepseek-ai/deepseek-harness.git || true
+          git remote remove upstream || true
+          git remote add upstream https://github.com/deepseek-ai/deepseek-harness.git
           git fetch upstream --tags
-          git push origin --tags || echo "Tags already exist or no tags to push"
 
       # 3. 切换到指定的旧版本代码（关键步骤）
       - name: Checkout Specific Tag
         run: |
-          # 尝试带前缀的标签名
-          git checkout dsh-v0.2.0-rc.2 || git checkout v0.2.0-rc.2 || (echo "❌ Error: Tag not found!" && exit 1)
+          git checkout dsh-v0.2.0-rc.2 || git checkout v0.2.0-rc.2 || (echo "Error: Tag not found! Please check the exact tag name in the upstream repository." && exit 1)
 
       # 4. 配置 Node.js 环境 (官方要求 >= 22.19.0)
       - name: Setup Node.js
