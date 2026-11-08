@@ -16,19 +16,19 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 2. 强制重置上游远程地址并拉取 Tags（仅拉取到本地，不推送）
+      # 2. 自动从官方原仓库拉取所有 Tags（无需推送回 Fork）
       - name: Sync Tags from Upstream
         run: |
           git remote remove upstream || true
           git remote add upstream https://github.com/deepseek-ai/deepseek-harness.git
           git fetch upstream --tags
 
-      # 3. 切换到指定的旧版本代码（关键步骤）
+      # 3. 切换到指定的旧版本代码
       - name: Checkout Specific Tag
         run: |
-          git checkout dsh-v0.2.0-rc.2 || git checkout v0.2.0-rc.2 || (echo "Error: Tag not found! Please check the exact tag name in the upstream repository." && exit 1)
+          git checkout dsh-v0.2.0-rc.2 || git checkout v0.2.0-rc.2 || (echo "❌ Error: Tag not found!" && exit 1)
 
-      # 4. 配置 Node.js 环境 (官方要求 >= 22.19.0)
+      # 4. 配置 Node.js 环境
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -40,7 +40,7 @@ jobs:
         with:
           version: 11
 
-      # 6. 安装项目依赖（开启缓存加速）
+      # 6. 安装项目依赖
       - name: Install Dependencies
         run: pnpm install
 
@@ -48,11 +48,23 @@ jobs:
       - name: Build Repository
         run: pnpm run build
 
-      # 8. 执行桌面端打包命令
+      # 8. 【关键修复】自动创建打包所需的环境变量配置文件
+      - name: Prepare Desktop Environment File
+        run: |
+          # 如果是 Windows 环境，复制 .env.windows.example
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            cp apps/desktop/.env.windows.example apps/desktop/.env.windows
+          # 如果是 macOS 环境，复制 .env.macos.example
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+            cp apps/desktop/.env.macos.example apps/desktop/.env.macos
+          fi
+        shell: bash
+
+      # 9. 执行桌面端打包命令
       - name: Package Desktop App
         run: pnpm run package:desktop
 
-      # 9. 上传打包产物
+      # 10. 上传打包产物
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
