@@ -1,0 +1,65 @@
+name: Build Desktop v0.2.0-rc.2 (Auto Sync Tags)
+
+on:
+  workflow_dispatch: # 允许在 GitHub 网页端手动触发
+
+jobs:
+  build:
+    name: Build Desktop Client
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest] # 同时在 Win 和 Mac 虚拟机上打包
+
+    steps:
+      # 1. 拉取你 Fork 仓库的当前代码
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2. 自动从官方原仓库拉取所有 Tags 并推送到你的 Fork
+      - name: Sync Tags from Upstream
+        run: |
+          git remote add upstream https://github.com/deepseek-ai/deepseek-harness.git || true
+          git fetch upstream --tags
+          git push origin --tags || echo "Tags already exist or no tags to push"
+
+      # 3. 切换到指定的旧版本代码（关键步骤）
+      - name: Checkout Specific Tag
+        run: |
+          # 尝试带前缀的标签名
+          git checkout dsh-v0.2.0-rc.2 || git checkout v0.2.0-rc.2 || (echo "❌ Error: Tag not found!" && exit 1)
+
+      # 4. 配置 Node.js 环境 (官方要求 >= 22.19.0)
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # 5. 配置 pnpm 包管理器
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 11
+
+      # 6. 安装项目依赖（开启缓存加速）
+      - name: Install Dependencies
+        run: pnpm install
+
+      # 7. 构建仓库基础产物
+      - name: Build Repository
+        run: pnpm run build
+
+      # 8. 执行桌面端打包命令
+      - name: Package Desktop App
+        run: pnpm run package:desktop
+
+      # 9. 上传打包产物
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsh-desktop-${{ matrix.os }}-v0.2.0-rc.2
+          path: |
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/*.AppImage
+          if-no-files-found: warn
