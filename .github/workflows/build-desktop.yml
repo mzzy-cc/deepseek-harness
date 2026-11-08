@@ -41,55 +41,36 @@ jobs:
       - name: Build Repository
         run: pnpm run build
 
-      # 【终极完善版】：一次性注入所有打包校验所需的测试环境变量
+      # 【终极无敌版】：一次性注入所有打包校验所需的测试环境变量（Win & Mac 通用）
       - name: Prepare Desktop Environment File Safely
         run: |
           if [ "$RUNNER_OS" == "Windows" ]; then
             ENV_FILE="apps/desktop/.env.windows"
             cp apps/desktop/.env.windows.example "$ENV_FILE"
-            
-            # 注入所有必需的测试 Origin
-            if grep -q "^DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=" "$ENV_FILE"; then
-              sed -i 's|^DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com|' "$ENV_FILE"
-            else
-              echo "DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
-            fi
-            
-            if grep -q "^DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=" "$ENV_FILE"; then
-              sed -i 's|^DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com|' "$ENV_FILE"
-            else
-              echo "DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
-            fi
-            
-            # 修复本次报错：注入 DOWNLOAD_TEST_ORIGIN
-            if grep -q "^DOWNLOAD_TEST_ORIGIN=" "$ENV_FILE"; then
-              sed -i 's|^DOWNLOAD_TEST_ORIGIN=.*|DOWNLOAD_TEST_ORIGIN=https://deepseek.com|' "$ENV_FILE"
-            else
-              echo "DOWNLOAD_TEST_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
-            fi
-            
+            SED_CMD="sed -i"
           elif [ "$RUNNER_OS" == "macOS" ]; then
             ENV_FILE="apps/desktop/.env.macos"
             cp apps/desktop/.env.macos.example "$ENV_FILE"
-            
-            if grep -q "^DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=" "$ENV_FILE"; then
-              sed -i '' 's|^DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com|' "$ENV_FILE"
-            else
-              echo "DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
-            fi
-            
-            if grep -q "^DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=" "$ENV_FILE"; then
-              sed -i '' 's|^DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=.*|DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com|' "$ENV_FILE"
-            else
-              echo "DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
-            fi
-            
-            if grep -q "^DOWNLOAD_TEST_ORIGIN=" "$ENV_FILE"; then
-              sed -i '' 's|^DOWNLOAD_TEST_ORIGIN=.*|DOWNLOAD_TEST_ORIGIN=https://deepseek.com|' "$ENV_FILE"
-            else
-              echo "DOWNLOAD_TEST_ORIGIN=https://deepseek.com" >> "$ENV_FILE"
-            fi
+            SED_CMD="sed -i ''"
           fi
+          
+          # 定义所有需要注入的测试变量
+          declare -A ENV_VARS=(
+            ["DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN"]="https://deepseek.com"
+            ["DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN"]="https://deepseek.com"
+            ["DOWNLOAD_TEST_ORIGIN"]="https://deepseek.com"
+            ["DOWNLOAD_TEST_RELEASE_ID"]="00000000000000000000000000000000"
+          )
+          
+          # 遍历并注入变量
+          for KEY in "${!ENV_VARS[@]}"; do
+            VALUE="${ENV_VARS[$KEY]}"
+            if grep -q "^${KEY}=" "$ENV_FILE"; then
+              $SED_CMD "s|^${KEY}=.*|${KEY}=${VALUE}|" "$ENV_FILE"
+            else
+              echo "${KEY}=${VALUE}" >> "$ENV_FILE"
+            fi
+          done
         shell: bash
 
       - name: Package Desktop App
