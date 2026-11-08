@@ -40,6 +40,25 @@ jobs:
       - name: Build Repository
         run: pnpm run build
 
+      # 【关键修复】：Unsigned 模式仍需 .env.windows 文件存在
+      - name: Create .env.windows for Unsigned Build
+        run: |
+          $envFile = "apps/desktop/.env.windows"
+          if (Test-Path "apps/desktop/.env.windows.example") {
+            Copy-Item "apps/desktop/.env.windows.example" $envFile
+          } else {
+            # 如果 example 文件也不存在，则创建最小可用配置
+            @"
+DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://deepseek.com
+DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://deepseek.com
+DOWNLOAD_TEST_ORIGIN=https://deepseek.com
+DOWNLOAD_TEST_RELEASE_ID=00000000000000000000000000000000
+"@ | Set-Content $envFile
+          }
+          Write-Host "✅ .env.windows created at: $envFile"
+          Get-Content $envFile
+        shell: pwsh
+
       - name: Package Desktop App (Unsigned)
         run: pnpm run package:desktop:win:x64:unsigned
         env:
